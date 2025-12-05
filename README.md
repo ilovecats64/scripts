@@ -1,0 +1,2 @@
+# scripts
+dont ban these
