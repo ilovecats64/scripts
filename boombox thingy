@@ -1,0 +1,179 @@
+-- Boombox Music Only Inspector
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local player = Players.LocalPlayer
+local UserInputService = game:GetService("UserInputService")
+
+-- GUI setup
+local screenGui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
+screenGui.Name = "BoomboxMusicInspector"
+
+local frame = Instance.new("Frame", screenGui)
+frame.Size = UDim2.new(0,360,0,260)
+frame.Position = UDim2.new(0,20,0,20)
+frame.BackgroundColor3 = Color3.fromRGB(25,25,25)
+frame.BorderSizePixel = 0
+
+local title = Instance.new("TextLabel", frame)
+title.Size = UDim2.new(1,0,0,30)
+title.Position = UDim2.new(0,0,0,0)
+title.BackgroundTransparency = 1
+title.Text = "ðŸŽµ Boombox Music Inspector"
+title.TextColor3 = Color3.fromRGB(255,255,255)
+title.Font = Enum.Font.SourceSansBold
+title.TextSize = 16
+
+local scroll = Instance.new("ScrollingFrame", frame)
+scroll.Size = UDim2.new(1,-10,1,-60)
+scroll.Position = UDim2.new(0,5,0,35)
+scroll.CanvasSize = UDim2.new(0,0,0,0)
+scroll.ScrollBarThickness = 6
+local listLayout = Instance.new("UIListLayout", scroll)
+listLayout.Padding = UDim.new(0,4)
+
+local copyBox = Instance.new("TextBox", frame)
+copyBox.Size = UDim2.new(1,-10,0,24)
+copyBox.Position = UDim2.new(0,5,1,-25)
+copyBox.PlaceholderText = "Copied ID will appear here"
+copyBox.Text = ""
+copyBox.ClearTextOnFocus = false
+
+-- Draggable
+local dragging, dragInput, dragStart, startPos = false
+local function update(input)
+	local delta = input.Position - dragStart
+	frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X,
+							   startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+end
+frame.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		dragging = true
+		dragStart = input.Position
+		startPos = frame.Position
+		input.Changed:Connect(function()
+			if input.UserInputState == Enum.UserInputState.End then
+				dragging = false
+			end
+		end)
+	end
+end)
+frame.InputChanged:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+		dragInput = input
+	end
+end)
+UserInputService.InputChanged:Connect(function(input)
+	if input == dragInput and dragging then
+		update(input)
+	end
+end)
+
+-- Helpers
+local function parseAssetId(id)
+	if not id then return nil end
+	return tostring(id):gsub("rbxassetid://","")
+end
+
+local function isMusicSound(sound)
+	if not sound:IsA("Sound") then return false end
+	if not sound.Playing then return false end
+	if not sound.SoundId:match("rbxassetid://") then return false end
+	if sound.Parent:IsA("Humanoid") or sound.Parent:IsA("Animator") then return false end
+	if sound.TimeLength and sound.TimeLength < 1 then return false end
+	return true
+end
+
+local function scanBoomboxSounds()
+	local results = {}
+	for _, pl in ipairs(Players:GetPlayers()) do
+		if pl.Character then
+			for _, s in ipairs(pl.Character:GetDescendants()) do
+				if isMusicSound(s) then
+					results[#results+1] = {
+						player = pl.Name,
+						soundName = s.Name,
+						assetId = parseAssetId(s.SoundId)
+					}
+				end
+			end
+		end
+	end
+	return results
+end
+
+local function clearRows()
+	for _, c in pairs(scroll:GetChildren()) do
+		if c:IsA("Frame") then c:Destroy() end
+	end
+end
+
+local function makeRow(entry)
+	local row = Instance.new("Frame", scroll)
+	row.Size = UDim2.new(1,0,0,28)
+	row.BackgroundTransparency = 0.25
+
+	local playerLabel = Instance.new("TextLabel", row)
+	playerLabel.Size = UDim2.new(0.3,0,1,0)
+	playerLabel.Position = UDim2.new(0,0,0,0)
+	playerLabel.BackgroundTransparency = 1
+	playerLabel.Text = entry.player
+	playerLabel.TextColor3 = Color3.fromRGB(255,255,255)
+	playerLabel.Font = Enum.Font.SourceSansBold
+	playerLabel.TextSize = 12
+
+	local soundLabel = Instance.new("TextLabel", row)
+	soundLabel.Size = UDim2.new(0.4,0,1,0)
+	soundLabel.Position = UDim2.new(0.3,0,0,0)
+	soundLabel.BackgroundTransparency = 1
+	soundLabel.Text = entry.soundName
+	soundLabel.TextColor3 = Color3.fromRGB(255,255,255)
+	soundLabel.Font = Enum.Font.SourceSans
+	soundLabel.TextSize = 12
+
+	local idLabel = Instance.new("TextLabel", row)
+	idLabel.Size = UDim2.new(0.2,0,1,0)
+	idLabel.Position = UDim2.new(0.7,0,0,0)
+	idLabel.BackgroundTransparency = 1
+	idLabel.Text = entry.assetId or "N/A"
+	idLabel.TextColor3 = Color3.fromRGB(200,200,200)
+	idLabel.Font = Enum.Font.SourceSans
+	idLabel.TextSize = 12
+
+	local copyBtn = Instance.new("TextButton", row)
+	copyBtn.Size = UDim2.new(0,50,0,20)
+	copyBtn.Position = UDim2.new(1,-55,0.5,-10)
+	copyBtn.Text = "Copy"
+	copyBtn.Font = Enum.Font.SourceSansBold
+	copyBtn.TextSize = 12
+	copyBtn.BackgroundColor3 = Color3.fromRGB(50,50,50)
+	copyBtn.TextColor3 = Color3.fromRGB(255,255,255)
+
+	copyBtn.MouseButton1Click:Connect(function()
+		local toCopy = entry.assetId or ""
+		local ok, err = pcall(function()
+			if setclipboard then setclipboard(toCopy) else error("no clipboard") end
+		end)
+		if ok then
+			copyBox.Text = toCopy
+			copyBox.PlaceholderText = "Copied to clipboard!"
+		else
+			copyBox.Text = toCopy
+			copyBox.PlaceholderText = "Clipboard unavailable; copied here."
+		end
+	end)
+end
+
+-- Refresh GUI
+local elapsed = 0
+RunService.RenderStepped:Connect(function(dt)
+	elapsed = elapsed + dt
+	if elapsed >= 1 then
+		clearRows()
+		local results = scanBoomboxSounds()
+		for _, r in ipairs(results) do
+			makeRow(r)
+		end
+		scroll.CanvasSize = UDim2.new(0,0,0,#results*32)
+		elapsed = 0
+	end
+end)
